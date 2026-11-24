@@ -1,0 +1,81 @@
+# Local development environment for the Teja School App.
+#
+# Everything (Node.js, PostgreSQL, Expo) runs in containers, so nothing is
+# installed on the laptop except Docker Desktop.
+#
+#   docker compose up -d db           start only the database
+#   docker compose up -d              start database + web portal/API
+#   docker compose --profile mobile up -d mobile   also start the Expo dev server
+#   docker compose stop               pause everything (data is kept)
+#   docker compose down               remove containers (data is kept)
+#   docker compose down -v            remove containers AND database data (fresh start)
+#
+# These values are for LOCAL DEVELOPMENT ONLY. Never use them in production.
+
+name: teja-school
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: teja-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: teja
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d teja"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  web:
+    image: node:22-bookworm-slim
+    container_name: teja-web
+    working_dir: /app/web
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/teja?schema=public
+      JWT_SECRET: dev-only-change-me-dev-only-change-me-32chars
+      SEED_ADMIN_EMAIL: admin@tejaschool.in
+      SEED_ADMIN_PASSWORD: ChangeMe123!
+      AUTH_BYPASS: "true"         # LOCAL DEV ONLY: no login, acts as the first admin
+      WATCHPACK_POLLING: "true"   # file change detection works on Windows bind mounts
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./project/web:/app/web
+      - web_node_modules:/app/web/node_modules   # kept inside Docker for speed
+    # Install OpenSSL (Prisma needs it), install dependencies, apply database migrations, then start the dev server.
+    command: sh -c "apt-get update -qq && apt-get install -y -qq openssl >/dev/null && npm install && npx prisma migrate deploy && npm run dev -- -H 0.0.0.0"
+    restart: unless-stopped
+
+  mobile:
+    profiles: ["mobile"]          # only starts with: docker compose --profile mobile up -d mobile
+    image: node:22-bookworm-slim
+    container_name: teja-mobile
+    working_dir: /app/mobile
+    environment:
+      CI: "1"                     # stops Expo from waiting for keyboard input
+      EXPO_NO_TELEMETRY: "1"
+      EXPO_PUBLIC_API_URL: http://localhost:3000   # change to your laptop's LAN IP for a real phone
+    ports:
+      - "8081:8081"
+      - "19000:19000"
+      - "19001:19001"
+    volumes:
+      - ./project/mobile:/app/mobile
+      - mobile_node_modules:/app/mobile/node_modules
+    command: sh -c "npm install && npx expo start --host lan --port 8081"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  web_node_modules:
+  mobile_node_modules:

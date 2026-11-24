@@ -1,0 +1,242 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum NoticeAudience {
+  ALL
+  TEACHERS
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  CARD
+  BANK_TRANSFER
+  CHEQUE
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  phone        String?
+  passwordHash String
+  role         Role     @default(TEACHER)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  classesTaught SchoolClass[] @relation("ClassTeacher")
+  notices       Notice[]
+  payments      FeePayment[]
+  salaryPaymentsRecorded SalaryPayment[] @relation("SalaryRecordedBy")
+  loansCreated           Loan[]          @relation("LoanCreatedBy")
+  loanRepaymentsRecorded LoanRepayment[] @relation("LoanRepaymentRecordedBy")
+}
+
+model SchoolClass {
+  id             String    @id @default(cuid())
+  name           String // e.g. "Grade 8"
+  section        String    @default("A")
+  room           String?
+  classTeacherId String?
+  classTeacher   User?     @relation("ClassTeacher", fields: [classTeacherId], references: [id], onDelete: SetNull)
+  students       Student[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([name, section])
+}
+
+model Student {
+  id            String        @id @default(cuid())
+  admissionNo   String        @unique
+  firstName     String
+  lastName      String
+  dateOfBirth   DateTime?
+  gender        Gender?
+  guardianName  String?
+  guardianPhones String[] @default([])
+  address       String?
+  notes         String?
+  status        StudentStatus @default(ACTIVE)
+  classId       String?
+  class         SchoolClass?  @relation(fields: [classId], references: [id], onDelete: SetNull)
+  feeItems      FeeItem[]
+  payments      FeePayment[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([classId])
+  @@index([lastName, firstName])
+}
+
+model Notice {
+  id        String         @id @default(cuid())
+  title     String
+  body      String
+  audience  NoticeAudience @default(ALL)
+  pinned    Boolean        @default(false)
+  authorId  String?
+  author    User?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([createdAt])
+}
+
+/// A fee charged to one student (transport, tour, books, tuition, ...). Added from the student's page.
+model FeeItem {
+  id        String       @id @default(cuid())
+  studentId String
+  student   Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  name      String // e.g. "Transport", "Class trip"
+  amount    Int // whole rupees
+  dueDate   DateTime?
+  payments  FeePayment[]
+  createdAt DateTime     @default(now())
+
+  @@index([studentId])
+}
+
+model FeePayment {
+  id           String        @id @default(cuid())
+  receiptNo    String        @unique
+  amount       Int // whole rupees
+  method       PaymentMethod @default(CASH)
+  paidOn       DateTime      @default(now())
+  note         String?
+  studentId    String
+  student      Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  feeItemId    String?
+  feeItem      FeeItem?      @relation(fields: [feeItemId], references: [id], onDelete: SetNull)
+  recordedById String?
+  recordedBy   User?         @relation(fields: [recordedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime      @default(now())
+
+  @@index([studentId])
+}
+
+/// A person who works at the school (teaching or non-teaching). Separate from login accounts (User).
+model StaffMember {
+  id             String          @id @default(cuid())
+  name           String
+  gender         Gender?
+  dateOfBirth    DateTime?
+  joiningDate    DateTime
+  subject        String?
+  monthlySalary  Int // whole rupees
+  active         Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  salaryPayments SalaryPayment[]
+  leaves         StaffLeave[]
+
+  @@index([name])
+}
+
+/// One salary payment. forMonth is the month being paid, e.g. "2026-11". Partial payments are allowed.
+model SalaryPayment {
+  id           String        @id @default(cuid())
+  staffId      String
+  staff        StaffMember   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  forMonth     String
+  amount       Int // whole rupees
+  paidOn       DateTime      @default(now())
+  method       PaymentMethod @default(BANK_TRANSFER)
+  note         String?
+  recordedById String?
+  recordedBy   User?         @relation("SalaryRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime      @default(now())
+
+  @@index([staffId, forMonth])
+}
+
+/// An approved leave, logged by the office. Unpaid leave days reduce that month's salary.
+model StaffLeave {
+  id          String      @id @default(cuid())
+  staffId     String
+  staff       StaffMember @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  startDate   DateTime
+  endDate     DateTime
+  days        Int
+  isPaid      Boolean     @default(false)
+  reason      String?
+  createdAt   DateTime    @default(now())
+
+  @@index([staffId, startDate])
+}
+
+enum LoanDirection {
+  BORROWED // the school owes this money
+  LENT // money owed to the school
+}
+
+enum InterestType {
+  SIMPLE
+  COMPOUND
+}
+
+enum RepaymentFrequency {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+/// A loan the school has taken or given. Interest and late fees are calculated, never stored.
+model Loan {
+  id             String              @id @default(cuid())
+  direction      LoanDirection       @default(BORROWED)
+  counterparty   String
+  principal      Int // whole rupees
+  annualRate     Float // percent per year, e.g. 12 means 12%
+  interestType   InterestType        @default(SIMPLE)
+  startDate      DateTime
+  frequency      RepaymentFrequency  @default(MONTHLY)
+  firstDueDate   DateTime
+  lateFeePercent Float               @default(0) // percent added at each missed due date; 0 means no late fee
+  installment    Int? // whole rupees paid at each due date; null means the whole balance is due
+  note           String?
+  createdById    String?
+  createdBy      User?               @relation("LoanCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  repayments     LoanRepayment[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+}
+
+/// A payment made on a loan. Repayments are never edited or deleted.
+model LoanRepayment {
+  id           String        @id @default(cuid())
+  loanId       String
+  loan         Loan          @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  amount       Int // whole rupees
+  paidOn       DateTime      @default(now())
+  method       PaymentMethod @default(BANK_TRANSFER)
+  note         String?
+  recordedById String?
+  recordedBy   User?         @relation("LoanRepaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime      @default(now())
+
+  @@index([loanId])
+}
