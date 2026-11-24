@@ -1,5 +1,5 @@
 import { requirePageUser } from "@/lib/auth";
-import { Sidebar } from "@/components/sidebar";
+import { TopBar } from "@/components/topbar";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requirePageUser();
@@ -10,13 +10,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     ...(isAdmin ? [{ href: "/transitions", label: "Transitions" }, { href: "/loans", label: "Loans" }] : []),
     ...(isAdmin ? [{ href: "/staff", label: "Staff" }] : []),
     ...(isAdmin ? [{ href: "/accounts", label: "Accounts" }] : []),
-    ...(isAdmin ? [{ href: "/admin", label: "Admin overview" }] : []),
+    ...(isAdmin ? [{ href: "/admin", label: "Admin" }] : []),
     { href: "/transport", label: "Transport" },
   ];
   return (
-    <div className="min-h-screen md:flex">
-      <Sidebar links={links} userName={user.name} roleLabel={isAdmin ? "Administrator" : "Teacher"} />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-8 md:py-8">{children}</main>
+    <div className="min-h-screen">
+      <TopBar links={links} userName={user.name} roleLabel={isAdmin ? "Administrator" : "Teacher"} />
+      <main className="mx-auto w-full max-w-[1280px] px-6 py-12 md:px-[72px] md:py-14">{children}</main>
+      <footer className="mx-auto max-w-[1280px] px-6 pb-12 text-center text-[10px] font-medium uppercase tracking-[0.3em] text-muted md:px-[72px]">
+        Teja International High School
+      </footer>
     </div>
   );
 }

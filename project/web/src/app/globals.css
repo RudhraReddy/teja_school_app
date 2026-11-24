@@ -31,4 +31,20 @@
 body {
   background: var(--bg);
   color: var(--ink);
+  font-weight: 300;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Luxury look: square corners everywhere, no shadows, hairline borders. */
+.rounded-lg,
+.rounded-xl,
+.rounded-md,
+.rounded-full {
+  border-radius: 0 !important;
+}
+.shadow-sm,
+.shadow-md,
+.shadow-lg,
+.shadow-xl {
+  box-shadow: none !important;
 }
